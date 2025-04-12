@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "test-server": {
+      "command": "node",
+      "args": [
+        "/Users/valorengels/src/mcp/test_server.js"
+      ],
+      "envVars": {},
+      "port": 3099,
+      "mcpName": "test-mcp"
+    }
+  }
+}

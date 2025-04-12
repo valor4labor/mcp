@@ -1,24 +1,52 @@
 # MCP Server Manager
 
-A streamlined utility for managing Model Context Protocol (MCP) servers for Claude using the Smithery registry.
+A streamlined utility for running MCP servers using Smithery's hosted services.
 
 ## Overview
 
-MCP Server Manager provides a simple command-line interface to set up, manage, and troubleshoot MCP servers that extend Claude's capabilities with:
+MCP Server Manager provides a simple command-line interface to manage Model Context Protocol (MCP) servers that extend Claude's capabilities with:
 
 - **Web Search** via Tavily
 - **Web Crawling** via Firecrawl
 - **AI Model Access** via OpenRouter
-- **Other capabilities** via the Smithery registry
+- **Sequential Thinking** for step-by-step reasoning
+- **Browser Automation** via Playwright
+- **Obsidian Integration** for accessing project management notes and documentation
+
+This utility uses Smithery's hosted versions of these services for maximum reliability and ease of use.
 
 ## Prerequisites
 
+- [Node.js v20+](https://nodejs.org/) (required)
 - [Claude CLI](https://github.com/anthropics/claude-cli)
-- [Smithery account](https://smithery.ai/)
-- API keys for services you want to use:
+- [Smithery account](https://smithery.ai/) and API key
+- API keys for each service:
   - [Tavily](https://tavily.com/)
   - [Firecrawl](https://firecrawl.dev/)
   - [OpenRouter](https://openrouter.ai/)
+
+## Installation
+
+### Local Installation
+
+```bash
+# Clone the repository
+git clone https://github.com/valor4labor/mcp.git
+cd mcp
+
+# Make the script executable
+chmod +x mcp_manager.sh
+```
+
+### Global Installation
+
+```bash
+# Install globally with npm
+npm install -g git+https://github.com/valor4labor/mcp.git
+
+# Now you can run from anywhere
+mcp-manager start
+```
 
 ## Quick Start
 
@@ -27,7 +55,10 @@ MCP Server Manager provides a simple command-line interface to set up, manage, a
 nano .env
 
 # 2. Start the MCP servers
+# For local installation:
 ./mcp_manager.sh start
+# OR for global installation:
+mcp-manager start
 
 # 3. In a new terminal, start Claude
 claude
@@ -35,10 +66,10 @@ claude
 
 ## Configuration
 
-Create a `.env` file with your API keys:
+1. Create a `.env` file with your API keys:
 
 ```
-# Smithery API Key - Get from https://smithery.ai/
+# Smithery API Key - Get from https://smithery.ai/ (under your profile)
 SMITHERY_API_KEY=your_smithery_key_here
 
 # Tavily API Key - Get from https://tavily.com/
@@ -51,10 +82,13 @@ FIRECRAWL_API_KEY=your_firecrawl_key_here
 OPENROUTER_API_KEY=your_openrouter_key_here
 ```
 
+2. Edit the `mcp_config.json` file as needed to add or remove MCP servers.
+
 ## Usage
 
 The manager provides a simple interface to control your MCP servers:
 
+For local installation:
 ```bash
 # Start all configured servers
 ./mcp_manager.sh start
@@ -70,15 +104,36 @@ The manager provides a simple interface to control your MCP servers:
 
 # Run diagnostics
 ./mcp_manager.sh diagnose
+```
 
-# List available servers from Smithery
-./mcp_manager.sh list
+For global installation:
+```bash
+# Start all configured servers
+mcp-manager start
 
-# Add a new server from Smithery
-./mcp_manager.sh add <server_name>
+# Stop all running servers
+mcp-manager stop
 
-# Remove a server
-./mcp_manager.sh remove <server_name>
+# Check status of servers
+mcp-manager status
+
+# View server logs
+mcp-manager logs [server_name]
+
+# Run diagnostics
+mcp-manager diagnose
+```
+
+### Custom Configuration Directory
+
+For global installations, you can specify a custom configuration directory:
+
+```bash
+# Set environment variable for configuration directory
+export MCP_CONFIG_DIR=/path/to/your/config
+
+# Run commands
+mcp-manager start
 ```
 
 ## Using MCP Tools in Claude
@@ -122,10 +177,35 @@ If you encounter issues:
 
 This utility simplifies managing MCP servers by:
 
-1. Utilizing the Smithery registry to discover and launch vendor-maintained MCP servers
+1. Using Smithery's hosted versions of MCP servers
 2. Securely passing your API keys to the appropriate servers
 3. Managing server processes and lifecycles
 4. Providing diagnostics and troubleshooting
+
+### Idempotent Operations
+
+The MCP Server Manager is designed to be safely run multiple times with the same results:
+
+- **Starting servers**: If a server is already running, it won't start a duplicate
+- **Stopping servers**: Only running servers will be stopped
+- **Status checks**: Automatically cleans up stale process entries
+- **MCP registration**: Prevents duplicate Claude CLI registrations
+
+## Project Management Vault
+
+The Obsidian integration connects to your Project-Management vault, providing Claude with access to documentation for these projects:
+
+- Bee
+- DeckFusion
+- Django Project Template
+- Golden Egg
+- PsyOptimal
+- Royop
+- Sage - Best Kept
+- Snowbird #Verkstad
+- Yudame Operations
+
+Claude can search, retrieve, and analyze notes from these projects to assist with your development work.
 
 ## License
 

@@ -1,18 +1,31 @@
 #!/bin/bash
 #
 # MCP Server Manager
-# A streamlined utility for managing Model Context Protocol (MCP) servers using the Smithery registry.
+# A streamlined utility for managing Model Context Protocol (MCP) servers using Smithery.
 
 set -e
 
-# Constants
+# Constants - support both local and global installation
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-CONFIG_FILE="$SCRIPT_DIR/.mcp_config"
-ENV_FILE="$SCRIPT_DIR/.env"
-LOG_DIR="$SCRIPT_DIR/logs"
+
+# For global installation, allow users to override config location
+if [ -z "$MCP_CONFIG_DIR" ]; then
+  # Look for config in the current directory first
+  if [ -f "./mcp_config.json" ]; then
+    CONFIG_DIR="."
+  else
+    # Otherwise use the script directory
+    CONFIG_DIR="$SCRIPT_DIR"
+  fi
+else
+  CONFIG_DIR="$MCP_CONFIG_DIR"
+fi
+
+CONFIG_FILE="$CONFIG_DIR/mcp_config.json"
+ENV_FILE="$CONFIG_DIR/.env"
+LOG_DIR="$CONFIG_DIR/logs"
 DIAGNOSTIC_FILE="$LOG_DIR/diagnostic.log"
-PROCESS_FILE="$SCRIPT_DIR/.mcp_processes"
-SERVER_CONFIG_DIR="$SCRIPT_DIR/.server_configs"
+PROCESS_FILE="$CONFIG_DIR/.mcp_processes"
 
 # Colors for output
 RED='\033[0;31m'
@@ -24,30 +37,44 @@ NC='\033[0m' # No Color
 
 # Ensure directories exist
 mkdir -p "$LOG_DIR"
-mkdir -p "$SERVER_CONFIG_DIR"
 
 # Load environment variables
-if [ -f "$ENV_FILE" ]; then
-    source "$ENV_FILE"
-fi
-
-# Default servers to manage
-DEFAULT_SERVERS="tavily firecrawl openrouter"
+load_env() {
+    if [ -f "$ENV_FILE" ]; then
+        source "$ENV_FILE"
+    else
+        echo -e "${RED}Error: .env file not found at $ENV_FILE${NC}"
+        echo -e "Please create the .env file with your API keys."
+        exit 1
+    fi
+}
 
 # Check for required tools
 check_requirements() {
     echo -e "${BLUE}Checking requirements...${NC}"
     
-    # Check for curl
-    if ! command -v curl &> /dev/null; then
-        echo -e "${RED}Error: curl is required but not installed.${NC}"
+    # Check for Node.js
+    if ! command -v node &> /dev/null; then
+        echo -e "${RED}Error: Node.js is required but not installed.${NC}"
+        echo -e "Please install Node.js v20 or higher: https://nodejs.org/"
         exit 1
     fi
     
-    # Check for jq
-    if ! command -v jq &> /dev/null; then
-        echo -e "${YELLOW}Warning: jq is not installed. This script works best with jq for JSON parsing.${NC}"
-        echo -e "Install jq with: brew install jq (macOS) or apt-get install jq (Linux)"
+    # Check Node.js version
+    node_version=$(node -v | cut -d'v' -f2)
+    node_major=$(echo "$node_version" | cut -d'.' -f1)
+    if [ "$node_major" -lt 20 ]; then
+        echo -e "${RED}Error: Node.js v20 or higher is required.${NC}"
+        echo -e "Current version: v${node_version}"
+        echo -e "Please upgrade Node.js: https://nodejs.org/"
+        exit 1
+    fi
+    
+    # Check for npx
+    if ! command -v npx &> /dev/null; then
+        echo -e "${RED}Error: npx is required but not installed.${NC}"
+        echo -e "Please install npm to get npx: https://nodejs.org/"
+        exit 1
     fi
     
     # Check for Claude CLI
@@ -56,96 +83,167 @@ check_requirements() {
         echo -e "See https://github.com/anthropics/claude-cli for installation instructions."
     fi
     
-    # Check for Smithery API key
+    # Check for jq
+    if ! command -v jq &> /dev/null; then
+        echo -e "${YELLOW}Warning: jq is not installed. This script works best with jq for JSON parsing.${NC}"
+        echo -e "Install jq with: brew install jq (macOS) or apt-get install jq (Linux)"
+    fi
+    
+    # Check for required API keys
     if [ -z "$SMITHERY_API_KEY" ]; then
         echo -e "${RED}Error: SMITHERY_API_KEY not found in .env file.${NC}"
         echo -e "Please add your Smithery API key to the .env file."
-        echo -e "Get your API key from: https://smithery.ai/"
         exit 1
     fi
     
     echo -e "${GREEN}All critical requirements met.${NC}"
 }
 
-# Get server info from Smithery Registry API
-fetch_server_info() {
-    local server_name="$1"
+# Resolve environment variables in string
+resolve_env_vars() {
+    local input="$1"
+    local output="$input"
     
-    echo -e "${BLUE}Fetching server information for ${server_name}...${NC}"
+    # Replace ${ENV_VAR} with its value
+    while [[ "$output" =~ \$\{([a-zA-Z_][a-zA-Z0-9_]*)\} ]]; do
+        local var_name="${BASH_REMATCH[1]}"
+        local var_value="${!var_name}"
+        
+        # Check if environment variable is set
+        if [ -z "$var_value" ]; then
+            echo -e "${YELLOW}Warning: Environment variable $var_name is not set${NC}" >&2
+            var_value="MISSING_ENV_VAR_$var_name"
+        fi
+        
+        output="${output//\$\{$var_name\}/$var_value}"
+    done
     
-    # Query the Smithery Registry API
-    local response
-    response=$(curl -s -H "Authorization: Bearer $SMITHERY_API_KEY" \
-        "https://registry.smithery.ai/servers?q=${server_name}")
+    echo "$output"
+}
+
+# Get server list from config
+get_server_list() {
+    if [ ! -f "$CONFIG_FILE" ]; then
+        echo -e "${RED}Error: Config file not found at $CONFIG_FILE${NC}"
+        exit 1
+    fi
     
-    # Save the server configuration
-    echo "$response" > "$SERVER_CONFIG_DIR/${server_name}.json"
-    
-    # Extract and return the server URL if using jq
     if command -v jq &> /dev/null; then
-        local server_url
-        server_url=$(echo "$response" | jq -r '.data[0].url')
-        echo "$server_url"
+        # Validate that the config file is valid JSON
+        if ! jq '.' "$CONFIG_FILE" > /dev/null 2>&1; then
+            echo -e "${RED}Error: $CONFIG_FILE is not valid JSON.${NC}"
+            exit 1
+        fi
+        
+        # Validate that the config file has the required structure
+        if ! jq -e '.mcpServers' "$CONFIG_FILE" > /dev/null 2>&1; then
+            echo -e "${RED}Error: $CONFIG_FILE is missing the 'mcpServers' object.${NC}"
+            exit 1
+        fi
+        
+        # Return the list of servers
+        jq -r '.mcpServers | keys[]' "$CONFIG_FILE"
     else
-        echo "Server information saved to $SERVER_CONFIG_DIR/${server_name}.json"
+        echo -e "${RED}Error: jq is required for parsing the config file.${NC}"
+        exit 1
     fi
 }
 
 # Start a specific MCP server
 start_server() {
     local server_name="$1"
-    local api_key_var="${server_name^^}_API_KEY"  # Convert to uppercase
     
-    # Get the API key for this server
-    local api_key="${!api_key_var}"
+    echo -e "${BOLD}Starting ${server_name} MCP server...${NC}"
     
-    if [ -z "$api_key" ]; then
-        echo -e "${YELLOW}Warning: No API key found for ${server_name}.${NC}"
-        echo -e "Add ${api_key_var} to your .env file for full functionality."
+    # Get server config
+    if [ ! -f "$CONFIG_FILE" ]; then
+        echo -e "${RED}Error: Config file not found at $CONFIG_FILE${NC}"
+        exit 1
     fi
     
-    echo -e "${BLUE}Starting ${server_name} MCP server...${NC}"
+    # Check if server exists in config
+    if ! jq -e ".mcpServers.\"$server_name\"" "$CONFIG_FILE" > /dev/null 2>&1; then
+        echo -e "${RED}Error: Server '$server_name' not found in config file.${NC}"
+        return 1
+    fi
     
-    # Fetch server information from Smithery
-    local server_info
-    server_info=$(fetch_server_info "$server_name")
+    # Check if server is already running
+    local existing_pid=""
+    if [ -f "$PROCESS_FILE" ]; then
+        existing_pid=$(grep "^${server_name}:" "$PROCESS_FILE" 2>/dev/null | cut -d: -f2)
+        if [ -n "$existing_pid" ] && ps -p "$existing_pid" > /dev/null 2>&1; then
+            echo -e "${YELLOW}${server_name} MCP server is already running with PID ${existing_pid}${NC}"
+            return 0
+        fi
+    fi
+    
+    # Get server command
+    local command
+    command=$(jq -r ".mcpServers.\"$server_name\".command" "$CONFIG_FILE")
+    command=$(resolve_env_vars "$command")
+    
+    # Get server args
+    local args
+    args=$(jq -r ".mcpServers.\"$server_name\".args | join(\" \")" "$CONFIG_FILE")
+    args=$(resolve_env_vars "$args")
+    
+    # Get environment variables
+    local env_vars
+    if jq -e ".mcpServers.\"$server_name\".envVars" "$CONFIG_FILE" > /dev/null 2>&1; then
+        env_vars=$(jq -r ".mcpServers.\"$server_name\".envVars | to_entries[] | \"\(.key)=\\\"\(.value)\\\"\"" "$CONFIG_FILE")
+    fi
+    
+    # Get port
+    local port
+    port=$(jq -r ".mcpServers.\"$server_name\".port" "$CONFIG_FILE")
+    
+    # Get MCP name
+    local mcp_name
+    mcp_name=$(jq -r ".mcpServers.\"$server_name\".mcpName" "$CONFIG_FILE")
     
     # Create a unique log file for this server
     local log_file="$LOG_DIR/${server_name}.log"
     
-    # Start the server based on its configuration
-    # For demonstration, using a simple npx command
-    # In a real implementation, this would parse the server configuration from Smithery
+    # Build environment variable exports
+    local env_exports=""
+    while IFS= read -r line; do
+        if [ -n "$line" ]; then
+            local resolved_line
+            resolved_line=$(resolve_env_vars "$line")
+            env_exports="$env_exports $resolved_line"
+        fi
+    done <<< "$env_vars"
     
-    if [ "$server_name" = "tavily" ]; then
-        TAVILY_API_KEY="$api_key" npx -y tavily-mcp@latest > "$log_file" 2>&1 &
-    elif [ "$server_name" = "firecrawl" ]; then
-        FIRECRAWL_API_KEY="$api_key" npx -y @mendable/firecrawl-mcp-server@latest > "$log_file" 2>&1 &
-    elif [ "$server_name" = "openrouter" ]; then
-        OPENROUTER_API_KEY="$api_key" npx -y openrouter-mcp@latest > "$log_file" 2>&1 &
-    else
-        echo -e "${RED}Unknown server: ${server_name}${NC}"
-        return 1
-    fi
+    # Build the full command
+    local full_command="$command $args"
+    
+    echo -e "${BLUE}Starting ${server_name} on port ${port}...${NC}"
+    echo -e "Command: ${env_exports} ${full_command}"
+    
+    # Execute the command with environment variables
+    eval "${env_exports} ${full_command} > \"$log_file\" 2>&1 &"
     
     # Save the process ID
     local pid=$!
+    
+    # Remove any existing entries for this server
+    if [ -f "$PROCESS_FILE" ]; then
+        grep -v "^${server_name}:" "$PROCESS_FILE" > "$PROCESS_FILE.tmp" 2>/dev/null || true
+        mv "$PROCESS_FILE.tmp" "$PROCESS_FILE" 2>/dev/null || true
+    fi
+    
+    # Add the new process ID
     echo "${server_name}:${pid}" >> "$PROCESS_FILE"
     
     echo -e "${GREEN}${server_name} MCP server started with PID ${pid}${NC}"
     echo -e "Logs available at: ${log_file}"
     
-    # Register the server with Claude CLI
+    # Register the server with Claude CLI - unregister first to avoid duplicates
     if command -v claude &> /dev/null; then
         echo -e "${BLUE}Registering ${server_name} with Claude CLI...${NC}"
-        if [ "$server_name" = "tavily" ]; then
-            claude mcp add --name "tavily-search" http://localhost:3000 > /dev/null 2>&1
-        elif [ "$server_name" = "firecrawl" ]; then
-            claude mcp add --name "firecrawl-web" http://localhost:3333 > /dev/null 2>&1
-        elif [ "$server_name" = "openrouter" ]; then
-            claude mcp add --name "openrouter-ai" http://localhost:3001 > /dev/null 2>&1
-        fi
-        echo -e "${GREEN}${server_name} registered with Claude CLI${NC}"
+        claude mcp remove --name "$mcp_name" > /dev/null 2>&1 || true
+        claude mcp add --name "$mcp_name" "http://localhost:${port}" > /dev/null 2>&1
+        echo -e "${GREEN}${server_name} registered with Claude CLI as ${mcp_name}${NC}"
     fi
 }
 
@@ -155,13 +253,18 @@ stop_server() {
     
     echo -e "${BLUE}Stopping ${server_name} MCP server...${NC}"
     
+    if [ ! -f "$PROCESS_FILE" ]; then
+        echo -e "${YELLOW}No process file found. All servers are likely already stopped.${NC}"
+        return
+    fi
+    
     # Get the PID for this server
     local pid
     pid=$(grep "^${server_name}:" "$PROCESS_FILE" 2>/dev/null | cut -d: -f2)
     
     if [ -n "$pid" ]; then
         # Kill the process
-        kill -9 "$pid" 2>/dev/null || true
+        kill -15 "$pid" 2>/dev/null || kill -9 "$pid" 2>/dev/null || true
         
         # Remove the entry from the process file
         grep -v "^${server_name}:" "$PROCESS_FILE" > "$PROCESS_FILE.tmp" 2>/dev/null || true
@@ -172,17 +275,17 @@ stop_server() {
         echo -e "${YELLOW}No running process found for ${server_name}${NC}"
     fi
     
-    # Unregister the server from Claude CLI
-    if command -v claude &> /dev/null; then
-        echo -e "${BLUE}Unregistering ${server_name} from Claude CLI...${NC}"
-        if [ "$server_name" = "tavily" ]; then
-            claude mcp remove --name "tavily-search" > /dev/null 2>&1 || true
-        elif [ "$server_name" = "firecrawl" ]; then
-            claude mcp remove --name "firecrawl-web" > /dev/null 2>&1 || true
-        elif [ "$server_name" = "openrouter" ]; then
-            claude mcp remove --name "openrouter-ai" > /dev/null 2>&1 || true
+    # Get MCP name from config
+    if [ -f "$CONFIG_FILE" ] && command -v jq &> /dev/null; then
+        local mcp_name
+        mcp_name=$(jq -r ".mcpServers.\"$server_name\".mcpName" "$CONFIG_FILE" 2>/dev/null)
+        
+        # Unregister the server from Claude CLI
+        if [ -n "$mcp_name" ] && command -v claude &> /dev/null; then
+            echo -e "${BLUE}Unregistering ${server_name} from Claude CLI...${NC}"
+            claude mcp remove --name "$mcp_name" > /dev/null 2>&1 || true
+            echo -e "${GREEN}${server_name} unregistered from Claude CLI${NC}"
         fi
-        echo -e "${GREEN}${server_name} unregistered from Claude CLI${NC}"
     fi
 }
 
@@ -190,16 +293,23 @@ stop_server() {
 start_all_servers() {
     echo -e "${BOLD}Starting all MCP servers...${NC}"
     
-    # Initialize process file
-    rm -f "$PROCESS_FILE"
-    touch "$PROCESS_FILE"
+    # Create process file if it doesn't exist
+    if [ ! -f "$PROCESS_FILE" ]; then
+        touch "$PROCESS_FILE"
+    fi
+    
+    # Get list of servers from config
+    local servers
+    servers=$(get_server_list)
     
     # Start each server
-    for server in $DEFAULT_SERVERS; do
-        start_server "$server"
-    done
+    while IFS= read -r server; do
+        if [ -n "$server" ]; then
+            start_server "$server"
+        fi
+    done <<< "$servers"
     
-    echo -e "${GREEN}All servers started successfully.${NC}"
+    echo -e "${GREEN}All servers started.${NC}"
     echo -e "Use '${BOLD}./mcp_manager.sh status${NC}' to check server status."
 }
 
@@ -232,34 +342,85 @@ stop_all_servers() {
 check_status() {
     echo -e "${BOLD}MCP Server Status:${NC}"
     
-    # Check if process file exists
-    if [ ! -f "$PROCESS_FILE" ]; then
-        echo -e "${YELLOW}No running MCP servers found.${NC}"
-        return
-    fi
+    local servers
+    servers=$(get_server_list)
+    local any_running=false
     
     # Check each server
-    while read -r line; do
-        if [ -n "$line" ]; then
-            local server_name pid status
-            server_name=$(echo "$line" | cut -d: -f1)
-            pid=$(echo "$line" | cut -d: -f2)
+    while IFS= read -r server; do
+        if [ -n "$server" ]; then
+            local status
+            local pid
             
-            # Check if process is running
-            if ps -p "$pid" > /dev/null 2>&1; then
-                status="${GREEN}Running${NC}"
-            else
-                status="${RED}Not Running${NC}"
+            if [ -f "$PROCESS_FILE" ]; then
+                pid=$(grep "^${server}:" "$PROCESS_FILE" 2>/dev/null | cut -d: -f2)
             fi
             
-            printf "%-15s PID: %-10s Status: %b\n" "$server_name" "$pid" "$status"
+            if [ -n "$pid" ] && ps -p "$pid" > /dev/null 2>&1; then
+                status="${GREEN}Running (PID: ${pid})${NC}"
+                any_running=true
+                
+                # Clean up process file entry if needed
+                if ! grep -q "^${server}:${pid}$" "$PROCESS_FILE" 2>/dev/null; then
+                    # Remove old entries
+                    grep -v "^${server}:" "$PROCESS_FILE" > "$PROCESS_FILE.tmp" 2>/dev/null || true
+                    mv "$PROCESS_FILE.tmp" "$PROCESS_FILE" 2>/dev/null || true
+                    # Add correct entry
+                    echo "${server}:${pid}" >> "$PROCESS_FILE"
+                fi
+            else
+                status="${RED}Not Running${NC}"
+                
+                # Remove stale entries from process file
+                if [ -n "$pid" ] && [ -f "$PROCESS_FILE" ]; then
+                    grep -v "^${server}:" "$PROCESS_FILE" > "$PROCESS_FILE.tmp" 2>/dev/null || true
+                    mv "$PROCESS_FILE.tmp" "$PROCESS_FILE" 2>/dev/null || true
+                fi
+            fi
+            
+            local port
+            port=$(jq -r ".mcpServers.\"$server\".port" "$CONFIG_FILE" 2>/dev/null)
+            
+            local mcp_name
+            mcp_name=$(jq -r ".mcpServers.\"$server\".mcpName" "$CONFIG_FILE" 2>/dev/null)
+            
+            printf "%-15s Port: %-6s MCP Name: %-20s Status: %b\n" "$server" "$port" "$mcp_name" "$status"
         fi
-    done < "$PROCESS_FILE"
+    done <<< "$servers"
+    
+    if [ "$any_running" = false ]; then
+        echo -e "\n${YELLOW}No servers are currently running. Use '${BOLD}./mcp_manager.sh start${NC}${YELLOW}' to start them.${NC}"
+    fi
     
     # Check Claude MCP list
     if command -v claude &> /dev/null; then
         echo -e "\n${BOLD}Claude MCP Servers:${NC}"
         claude mcp list || echo -e "${YELLOW}Failed to get Claude MCP list${NC}"
+        
+        # Check for potential issues with Claude MCP registration
+        if [ "$any_running" = true ]; then
+            echo -e "\n${BOLD}Verifying Claude MCP registrations:${NC}"
+            local claude_mcps
+            claude_mcps=$(claude mcp list 2>/dev/null | grep -o 'Name: [^ ]*' | cut -d' ' -f2)
+            
+            while IFS= read -r server; do
+                if [ -n "$server" ]; then
+                    local mcp_name
+                    mcp_name=$(jq -r ".mcpServers.\"$server\".mcpName" "$CONFIG_FILE" 2>/dev/null)
+                    local pid
+                    
+                    if [ -f "$PROCESS_FILE" ]; then
+                        pid=$(grep "^${server}:" "$PROCESS_FILE" 2>/dev/null | cut -d: -f2)
+                    fi
+                    
+                    if [ -n "$pid" ] && ps -p "$pid" > /dev/null 2>&1; then
+                        if ! echo "$claude_mcps" | grep -q "$mcp_name"; then
+                            echo -e "${YELLOW}Warning: ${server} is running but not registered with Claude. Run '${BOLD}./mcp_manager.sh restart${NC}${YELLOW}' to fix.${NC}"
+                        fi
+                    fi
+                fi
+            done <<< "$servers"
+        fi
     fi
 }
 
@@ -281,15 +442,20 @@ view_logs() {
         # View logs for all servers
         echo -e "${BOLD}Recent logs from all MCP servers:${NC}"
         
-        for server in $DEFAULT_SERVERS; do
-            local log_file="$LOG_DIR/${server}.log"
-            
-            if [ -f "$log_file" ]; then
-                echo -e "${BOLD}=== ${server} ====${NC}"
-                tail -n 20 "$log_file"
-                echo -e "\n"
+        local servers
+        servers=$(get_server_list)
+        
+        while IFS= read -r server; do
+            if [ -n "$server" ]; then
+                local log_file="$LOG_DIR/${server}.log"
+                
+                if [ -f "$log_file" ]; then
+                    echo -e "${BOLD}=== ${server} ====${NC}"
+                    tail -n 20 "$log_file"
+                    echo -e "\n"
+                fi
             fi
-        done
+        done <<< "$servers"
         
         echo -e "For continuous log monitoring, use: ${BOLD}./mcp_manager.sh logs <server_name>${NC}"
     fi
@@ -323,6 +489,15 @@ run_diagnostics() {
         fi
         echo ""
         
+        echo "===== Config File ====="
+        if [ -f "$CONFIG_FILE" ]; then
+            echo "Config file exists: $CONFIG_FILE"
+            echo "Servers defined: $(jq -r '.mcpServers | keys | join(", ")' "$CONFIG_FILE")"
+        else
+            echo "Config file not found: $CONFIG_FILE"
+        fi
+        echo ""
+        
         echo "===== Server Status ====="
         if [ -f "$PROCESS_FILE" ]; then
             echo "Running servers:"
@@ -346,15 +521,25 @@ run_diagnostics() {
         echo ""
         
         echo "===== Network ====="
-        echo "Default MCP ports:"
-        # Check default ports
-        if command -v nc &> /dev/null; then
-            echo "Tavily (3000): $(nc -z localhost 3000 2>/dev/null && echo "Open" || echo "Closed")"
-            echo "Firecrawl (3333): $(nc -z localhost 3333 2>/dev/null && echo "Open" || echo "Closed")"
-            echo "OpenRouter (3001): $(nc -z localhost 3001 2>/dev/null && echo "Open" || echo "Closed")"
-        else
-            echo "Unable to check ports (nc command not available)"
-        fi
+        echo "MCP ports:"
+        
+        local servers
+        servers=$(get_server_list)
+        
+        while IFS= read -r server; do
+            if [ -n "$server" ]; then
+                local port
+                port=$(jq -r ".mcpServers.\"$server\".port" "$CONFIG_FILE" 2>/dev/null)
+                
+                if [ -n "$port" ]; then
+                    if command -v nc &> /dev/null; then
+                        echo "$server ($port): $(nc -z localhost "$port" 2>/dev/null && echo "Open" || echo "Closed")"
+                    else
+                        echo "$server: Port $port (Unable to check - nc command not available)"
+                    fi
+                fi
+            fi
+        done <<< "$servers"
         echo ""
         
         echo "===== Claude CLI ====="
@@ -368,17 +553,31 @@ run_diagnostics() {
         echo ""
         
         echo "===== Server Logs ====="
-        for server in $DEFAULT_SERVERS; do
-            local log_file="$LOG_DIR/${server}.log"
-            
-            if [ -f "$log_file" ]; then
-                echo "=== $server ==="
-                tail -n 10 "$log_file"
-                echo ""
-            else
-                echo "No log file for $server"
+        local servers
+        servers=$(get_server_list)
+        
+        while IFS= read -r server; do
+            if [ -n "$server" ]; then
+                local log_file="$LOG_DIR/${server}.log"
+                
+                if [ -f "$log_file" ]; then
+                    echo "=== $server ==="
+                    tail -n 10 "$log_file"
+                    echo ""
+                else
+                    echo "No log file for $server"
+                fi
             fi
-        done
+        done <<< "$servers"
+        
+        echo "===== Node.js Info ====="
+        if command -v node &> /dev/null; then
+            echo "Node.js version: $(node -v)"
+            echo "npm version: $(npm -v 2>/dev/null || echo "Not available")"
+            echo "npx version: $(npx -v 2>/dev/null || echo "Not available")"
+        else
+            echo "Node.js not installed"
+        fi
         
     } > "$DIAGNOSTIC_FILE"
     
@@ -387,87 +586,10 @@ run_diagnostics() {
     echo -e "Run ${BOLD}cat ${DIAGNOSTIC_FILE}${NC} to view the full report."
 }
 
-# List available servers from Smithery
-list_servers() {
-    echo -e "${BOLD}Available MCP Servers from Smithery:${NC}"
-    
-    # Query the Smithery Registry API
-    local response
-    response=$(curl -s -H "Authorization: Bearer $SMITHERY_API_KEY" \
-        "https://registry.smithery.ai/servers")
-    
-    # Parse and display the results
-    if command -v jq &> /dev/null; then
-        # Use jq to parse the JSON response
-        echo "$response" | jq -r '.data[] | "- \(.name): \(.description)"'
-    else
-        # Fallback without jq
-        echo "Server list retrieved. View the raw response at $LOG_DIR/smithery_servers.json"
-        echo "$response" > "$LOG_DIR/smithery_servers.json"
-    fi
-}
-
-# Add a server from Smithery
-add_server() {
-    local server_name="$1"
-    
-    if [ -z "$server_name" ]; then
-        echo -e "${RED}Error: No server name provided.${NC}"
-        echo -e "Usage: ./mcp_manager.sh add <server_name>"
-        return 1
-    fi
-    
-    echo -e "${BOLD}Adding ${server_name} MCP server from Smithery:${NC}"
-    
-    # Fetch server information from Smithery
-    fetch_server_info "$server_name"
-    
-    # Add to default servers list
-    if ! grep -q "$server_name" <<< "$DEFAULT_SERVERS"; then
-        DEFAULT_SERVERS="$DEFAULT_SERVERS $server_name"
-        echo "DEFAULT_SERVERS=\"$DEFAULT_SERVERS\"" > "$CONFIG_FILE"
-        echo -e "${GREEN}Added ${server_name} to managed servers.${NC}"
-    fi
-    
-    # Suggest API key needed
-    echo -e "${YELLOW}Note: Add ${server_name^^}_API_KEY to your .env file if required.${NC}"
-    
-    # Option to start the server immediately
-    read -r -p "Start this server now? [y/N] " response
-    if [[ "$response" =~ ^[Yy]$ ]]; then
-        start_server "$server_name"
-    fi
-}
-
-# Remove a server
-remove_server() {
-    local server_name="$1"
-    
-    if [ -z "$server_name" ]; then
-        echo -e "${RED}Error: No server name provided.${NC}"
-        echo -e "Usage: ./mcp_manager.sh remove <server_name>"
-        return 1
-    fi
-    
-    echo -e "${BOLD}Removing ${server_name} MCP server:${NC}"
-    
-    # Stop the server if it's running
-    stop_server "$server_name"
-    
-    # Remove from default servers list
-    DEFAULT_SERVERS=$(echo "$DEFAULT_SERVERS" | sed "s/\b$server_name\b//g" | tr -s ' ')
-    echo "DEFAULT_SERVERS=\"$DEFAULT_SERVERS\"" > "$CONFIG_FILE"
-    
-    # Remove configuration
-    rm -f "$SERVER_CONFIG_DIR/${server_name}.json"
-    
-    echo -e "${GREEN}Removed ${server_name} from managed servers.${NC}"
-}
-
 # Print usage information
 print_usage() {
     echo -e "${BOLD}MCP Server Manager${NC}"
-    echo -e "A utility for managing Model Context Protocol (MCP) servers."
+    echo -e "A utility for managing Model Context Protocol (MCP) servers with Smithery."
     echo
     echo -e "${BOLD}Usage:${NC}"
     echo -e "  ./mcp_manager.sh [command] [arguments]"
@@ -478,31 +600,48 @@ print_usage() {
     echo -e "  ${GREEN}status${NC}          Check status of all MCP servers"
     echo -e "  ${GREEN}logs${NC} [server]   View logs for all or a specific server"
     echo -e "  ${GREEN}diagnose${NC}        Run diagnostics and troubleshooting"
-    echo -e "  ${GREEN}list${NC}            List available servers from Smithery"
-    echo -e "  ${GREEN}add${NC} <server>    Add a new server from Smithery"
-    echo -e "  ${GREEN}remove${NC} <server> Remove a server"
     echo -e "  ${GREEN}help${NC}            Show this help message"
     echo
     echo -e "${BOLD}Examples:${NC}"
     echo -e "  ./mcp_manager.sh start       # Start all servers"
     echo -e "  ./mcp_manager.sh logs tavily # View tavily server logs"
-    echo -e "  ./mcp_manager.sh add my-tool # Add a new server 'my-tool'"
 }
 
-# Load saved configuration if it exists
-if [ -f "$CONFIG_FILE" ]; then
-    source "$CONFIG_FILE"
-fi
+# Setup trap for graceful shutdown
+cleanup() {
+    echo -e "\n${YELLOW}Received termination signal. Cleaning up...${NC}"
+    if [ -f "$PROCESS_FILE" ]; then
+        while read -r line; do
+            if [ -n "$line" ]; then
+                local server_name pid
+                server_name=$(echo "$line" | cut -d: -f1)
+                pid=$(echo "$line" | cut -d: -f2)
+                
+                # Kill the process
+                kill -15 "$pid" 2>/dev/null || kill -9 "$pid" 2>/dev/null || true
+                echo -e "${GREEN}${server_name} MCP server stopped${NC}"
+            fi
+        done < "$PROCESS_FILE"
+        rm -f "$PROCESS_FILE"
+    fi
+    exit 0
+}
 
 # Main function to handle commands
 main() {
     local command="$1"
     shift
     
+    # Setup trap for graceful shutdown
+    trap cleanup INT TERM
+    
     # If no command provided, use "help"
     if [ -z "$command" ]; then
         command="help"
     fi
+    
+    # Load environment variables
+    load_env
     
     # Check requirements first
     if [ "$command" != "help" ]; then
@@ -529,15 +668,6 @@ main() {
             ;;
         diagnose)
             run_diagnostics
-            ;;
-        list)
-            list_servers
-            ;;
-        add)
-            add_server "$1"
-            ;;
-        remove)
-            remove_server "$1"
             ;;
         help|--help|-h)
             print_usage
