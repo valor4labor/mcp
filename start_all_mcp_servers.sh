@@ -27,6 +27,38 @@ cd "$SCRIPT_DIR" || { echo "Failed to change to script directory"; exit 1; }
 # - First digit after 5 indicates the service (0=system, 1=Tavily, 2=Service2, etc.)
 # - Last digit allows for multiple instances of the same service if needed
 
+# Check and setup virtual environment
+VENV_DIR="$SCRIPT_DIR/venv"
+if [[ ! -d "$VENV_DIR" ]]; then
+  echo -e "${YELLOW}Creating virtual environment...${NC}"
+  # Check if uv is available
+  if command -v uv &> /dev/null; then
+    uv venv "$VENV_DIR"
+  else
+    echo -e "${YELLOW}uv not found, using standard venv...${NC}"
+    python3 -m venv "$VENV_DIR"
+  fi
+  echo -e "${GREEN}Virtual environment created at $VENV_DIR${NC}"
+fi
+
+# Activate virtual environment
+echo -e "${YELLOW}Activating virtual environment...${NC}"
+source "$VENV_DIR/bin/activate"
+
+# Install dependencies if needed
+echo -e "${YELLOW}Checking dependencies...${NC}"
+if ! python -c "import tavily" 2>/dev/null; then
+  echo -e "${YELLOW}Installing dependencies...${NC}"
+  if command -v uv &> /dev/null; then
+    uv pip install tavily-python requests
+  else
+    pip install tavily-python requests
+  fi
+  echo -e "${GREEN}Dependencies installed${NC}"
+else
+  echo -e "${GREEN}Dependencies already installed${NC}"
+fi
+
 # Load environment variables from .env file
 ENV_FILE="$SCRIPT_DIR/.env"
 if [[ -f "$ENV_FILE" ]]; then
