@@ -253,8 +253,8 @@ start_server() {
     # Register the server with Claude CLI - unregister first to avoid duplicates
     if command -v claude &> /dev/null; then
         echo -e "${BLUE}Registering ${server_name} with Claude CLI...${NC}"
-        claude mcp remove --name "$mcp_name" > /dev/null 2>&1 || true
-        claude mcp add --name "$mcp_name" "http://localhost:${port}" > /dev/null 2>&1
+        claude mcp remove "$mcp_name" > /dev/null 2>&1 || true
+        claude mcp add "$mcp_name" "http://localhost:${port}" > /dev/null 2>&1
         echo -e "${GREEN}${server_name} registered with Claude CLI as ${mcp_name}${NC}"
     fi
 }
@@ -295,7 +295,7 @@ stop_server() {
         # Unregister the server from Claude CLI
         if [ -n "$mcp_name" ] && command -v claude &> /dev/null; then
             echo -e "${BLUE}Unregistering ${server_name} from Claude CLI...${NC}"
-            claude mcp remove --name "$mcp_name" > /dev/null 2>&1 || true
+            claude mcp remove "$mcp_name" > /dev/null 2>&1 || true
             echo -e "${GREEN}${server_name} unregistered from Claude CLI${NC}"
         fi
     fi
@@ -426,7 +426,8 @@ check_status() {
                     fi
                     
                     if [ -n "$pid" ] && ps -p "$pid" > /dev/null 2>&1; then
-                        if ! echo "$claude_mcps" | grep -q "$mcp_name"; then
+                        # Just check if the MCP name exists in the list
+                        if ! claude mcp list 2>/dev/null | grep -q "$mcp_name"; then
                             echo -e "${YELLOW}Warning: ${server} is running but not registered with Claude. Run '${BOLD}./mcp_manager.sh restart${NC}${YELLOW}' to fix.${NC}"
                         fi
                     fi
