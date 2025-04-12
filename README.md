@@ -82,6 +82,31 @@ Or with custom settings:
 
 ## Usage with Claude Code
 
+### When to Use Claude Code with MCP Tools
+
+Claude Code with MCP tools gives you powerful capabilities beyond the standard Claude model:
+
+- **Real-time Information Access**: Get up-to-date information about current events, news, and facts beyond Claude's knowledge cutoff
+- **Web Research**: Search the web for specific information, sources, or references
+- **Content Verification**: Fact-check information or find supporting evidence
+- **Technical Research**: Look up documentation, code examples, or technical specifications
+
+Some examples of when to use Claude Code with MCP tools:
+
+```
+# Research questions
+claude-code "What are the latest developments in AI regulation in 2025?"
+
+# Fact-checking
+claude-code "Who is currently the CEO of Apple?"
+
+# Technical assistance
+claude-code "Find best practices for handling async operations in React"
+
+# Current events
+claude-code "What were the results of yesterday's F1 race?"
+```
+
 ### Setting Up the Claude Config File
 
 To use MCP tools without specifying flags each time:
@@ -135,6 +160,28 @@ You can also use multiple MCP tools at once:
 ```bash
 claude-code --mcp-tool="http://localhost:5001/mcp" --mcp-tool="http://localhost:5011/mcp" "Who won the latest F1 race?"
 ```
+
+### Verifying Claude Code MCP Integration
+
+To check if Claude Code is correctly using your MCP tools:
+
+1. **Start the MCP servers**:
+   ```bash
+   ./start_all_mcp_servers.sh
+   ```
+
+2. **Run a simple test query**:
+   ```bash
+   claude-code "What is the current weather in New York City? Use the search tool to find real-time information."
+   ```
+
+3. **Look for tool usage in Claude's response**:
+   Claude should indicate that it's using the Tavily search tool to find current information.
+
+If Claude doesn't use the MCP tool, ensure:
+- The MCP servers are running (check with `lsof -i:5001`)
+- Your config.json is correctly set up or you're using the `--mcp-tool` flag
+- Your query clearly requires information that would benefit from web search
 
 ## Available MCP Servers
 
