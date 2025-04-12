@@ -67,11 +67,44 @@ start_test_server() {
   echo -e "${YELLOW}Setting up for $name server...${NC}"
   local server_dir=$(dirname "$script")
   
-  # For testing purposes, let's use the system Python
-  # This avoids virtual environment issues in the test script
-  echo -e "${YELLOW}Note: Tests use system Python installation${NC}"
-  
-  # We'll let the script handle its own dependencies
+  # Check and setup virtual environment if not already in one
+  if [[ -z "$VIRTUAL_ENV" ]]; then
+    VENV_DIR="$SCRIPT_DIR/venv"
+    if [[ ! -d "$VENV_DIR" ]]; then
+      echo -e "${YELLOW}Creating virtual environment for testing...${NC}"
+      if command -v uv &> /dev/null; then
+        uv venv "$VENV_DIR"
+      else
+        python3 -m venv "$VENV_DIR"
+      fi
+    fi
+    
+    # Activate virtual environment
+    echo -e "${YELLOW}Activating virtual environment for testing...${NC}"
+    source "$VENV_DIR/bin/activate"
+    
+    # Install testing dependencies
+    echo -e "${YELLOW}Installing test dependencies...${NC}"
+    REQUIREMENTS_FILE="$SCRIPT_DIR/requirements-dev.txt"
+    if [[ -f "$REQUIREMENTS_FILE" ]]; then
+      if command -v uv &> /dev/null; then
+        uv pip install -r "$REQUIREMENTS_FILE"
+      else
+        pip install -r "$REQUIREMENTS_FILE"
+      fi
+      echo -e "${GREEN}Test dependencies installed${NC}"
+    else
+      echo -e "${RED}Warning: Test requirements file not found${NC}"
+      echo -e "${YELLOW}Installing minimal test dependencies...${NC}"
+      if command -v uv &> /dev/null; then
+        uv pip install tavily-python requests pytest
+      else
+        pip install tavily-python requests pytest
+      fi
+    fi
+  else
+    echo -e "${GREEN}Using existing virtual environment: $VIRTUAL_ENV${NC}"
+  fi
   
   # Start the server with explicit API key
   "$script" --port "$port" --api-key "${!api_key_name}" &

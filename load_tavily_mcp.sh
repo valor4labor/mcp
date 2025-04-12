@@ -29,18 +29,25 @@ fi
 echo -e "${YELLOW}Activating virtual environment...${NC}"
 source "$VENV_DIR/bin/activate"
 
-# Install dependencies if needed
-echo -e "${YELLOW}Checking dependencies...${NC}"
-if ! python -c "import tavily" 2>/dev/null; then
-  echo -e "${YELLOW}Installing dependencies...${NC}"
+# Install dependencies from requirements file
+echo -e "${YELLOW}Checking and installing dependencies...${NC}"
+REQUIREMENTS_FILE="$SCRIPT_DIR/requirements.txt"
+if [[ -f "$REQUIREMENTS_FILE" ]]; then
+  if command -v uv &> /dev/null; then
+    uv pip install -r "$REQUIREMENTS_FILE"
+  else
+    pip install -r "$REQUIREMENTS_FILE"
+  fi
+  echo -e "${GREEN}Dependencies installed from $REQUIREMENTS_FILE${NC}"
+else
+  echo -e "${RED}Warning: Requirements file not found at $REQUIREMENTS_FILE${NC}"
+  echo -e "${YELLOW}Installing minimal dependencies...${NC}"
   if command -v uv &> /dev/null; then
     uv pip install tavily-python requests
   else
     pip install tavily-python requests
   fi
-  echo -e "${GREEN}Dependencies installed${NC}"
-else
-  echo -e "${GREEN}Dependencies already installed${NC}"
+  echo -e "${GREEN}Minimal dependencies installed${NC}"
 fi
 
 # Load environment variables from .env file
