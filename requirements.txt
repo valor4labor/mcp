@@ -1,5 +1,0 @@
-requests==2.31.0
-# Exclude tiktoken altogether
-tavily-python==0.2.2; python_version >= "3.6"
-# Explicitly exclude tiktoken
-# tiktoken==0.5.1

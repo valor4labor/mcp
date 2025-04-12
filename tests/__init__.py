@@ -1,3 +1,0 @@
-"""
-MCP Server Test Suite
-"""

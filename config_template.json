@@ -1,9 +1,0 @@
-{
-  "mcp_tools": [
-    {
-      "url": "http://localhost:5001/mcp",
-      "name": "mcp__tavily_search"
-    }
-  ],
-  "__comment": "Add more MCP tools to the array above as needed"
-}
