@@ -95,93 +95,194 @@ Some examples of when to use Claude Code with MCP tools:
 
 ```
 # Research questions
-claude-code "What are the latest developments in AI regulation in 2025?"
+claude "What are the latest developments in AI regulation in 2025?"
 
 # Fact-checking
-claude-code "Who is currently the CEO of Apple?"
+claude "Who is currently the CEO of Apple?"
 
 # Technical assistance
-claude-code "Find best practices for handling async operations in React"
+claude "Find best practices for handling async operations in React"
 
 # Current events
-claude-code "What were the results of yesterday's F1 race?"
+claude "What were the results of yesterday's F1 race?"
 ```
 
-### Setting Up the Claude Config File
+### Using MCP with Claude Code
 
-To use MCP tools without specifying flags each time:
+Our scripts now handle two important aspects of using MCP tools:
 
-1. **Create or edit the Claude config file**:
+1. **Registration**: The scripts register the MCP servers with Claude so they show up in the tool list
+2. **Running**: The scripts start the MCP servers which must remain running while you use Claude
 
-```bash
-# Create the directory if it doesn't exist
-mkdir -p ~/.claude
+#### Recommended Workflow
 
-# Create or edit the config.json file
-nano ~/.claude/config.json
-```
+There are two ways to use MCP tools with Claude:
 
-2. **Add the MCP tools configuration** to your config.json file:
+##### Option 1: Use Claude's MCP server manager (Recommended)
 
-```json
-{
-  "mcp_tools": [
-    {
-      "url": "http://localhost:5001/mcp",
-      "name": "mcp__tavily_search"
-    }
-    // Add more MCP tools as needed
-  ]
-}
-```
-
-3. **Save the file** (press Ctrl+X, then Y in nano)
-
-The setup script will offer to do this for you automatically, but you can also edit it manually.
-
-### Using with Default Config
-
-Once you've set up the config.json file, you can use Claude Code without any extra flags:
-
-```bash
-claude-code "Who won the latest F1 race?"
-```
-
-### Using with Command Line Flag
-
-Alternatively, specify the MCP tool directly (useful for temporary use or testing):
-
-```bash
-claude-code --mcp-tool="http://localhost:5001/mcp" "Who won the latest F1 race?"
-```
-
-You can also use multiple MCP tools at once:
-
-```bash
-claude-code --mcp-tool="http://localhost:5001/mcp" --mcp-tool="http://localhost:5011/mcp" "Who won the latest F1 race?"
-```
-
-### Verifying Claude Code MCP Integration
-
-To check if Claude Code is correctly using your MCP tools:
-
-1. **Start the MCP servers**:
+1. **Register** the MCP servers with Claude:
    ```bash
+   # Register all MCP servers
+   ./start_all_mcp_servers.sh --register-only
+   ```
+
+2. **Start Claude's MCP server manager**:
+   ```bash
+   # This will start and manage all registered MCP servers
+   claude mcp serve
+   ```
+
+3. **In a new terminal window**, run Claude:
+   ```bash
+   # Connect to the running servers
+   claude
+   ```
+
+##### Option 2: Manual server management
+
+1. **First Terminal**: Run the server script and **leave it running**
+   ```bash
+   # Start the MCP server and keep this terminal open
    ./start_all_mcp_servers.sh
    ```
 
-2. **Run a simple test query**:
+2. **Second Terminal**: Run Claude in a different terminal window
    ```bash
-   claude-code "What is the current weather in New York City? Use the search tool to find real-time information."
+   # In a new terminal window
+   claude
    ```
 
-3. **Look for tool usage in Claude's response**:
-   Claude should indicate that it's using the Tavily search tool to find current information.
+#### Global Registration
 
-If Claude doesn't use the MCP tool, ensure:
-- The MCP servers are running (check with `lsof -i:5001`)
-- Your config.json is correctly set up or you're using the `--mcp-tool` flag
-- Your query clearly requires information that would benefit from web search
+The MCP servers are registered with **global scope** and **absolute paths**, which means:
+
+1. They're available in all directories on your system, not just the current project
+2. They work correctly regardless of your current working directory
+3. You don't need to be in the MCP directory to use them
+
+This makes the MCP tools available globally, but **remember that the server must be running** in another terminal window.
+
+#### MCP Server Management
+
+You can manage your MCP servers with these commands:
+
+```bash
+# List all configured servers
+claude mcp list
+
+# Get details about a specific server
+claude mcp get tavily
+
+# Remove a server
+claude mcp remove tavily
+```
+
+#### Manual Registration (if needed)
+
+You can manually register an MCP server with Claude using:
+
+```bash
+# Basic format (global scope with absolute path)
+claude mcp add server-name -e API_KEY=your_key --scope user -- /absolute/path/to/server --port 5001
+
+# Example for Tavily (from the mcp directory)
+SCRIPT_PATH="$(realpath ./servers/tavily/tavily_mcp.py)"
+claude mcp add tavily -e TAVILY_API_KEY=${TAVILY_API_KEY} --scope user -- "$SCRIPT_PATH" --port 5001
+```
+
+The `-e` flag passes environment variables to the MCP server, the `--scope user` flag makes the server available globally across all directories, and the `--` separator marks where the server command begins. All arguments after the `--` are passed to the server.
+
+### Using MCP in Claude Code
+
+There are two parts to using the MCP tools:
+
+1. **Registering the MCP server** (which our scripts do automatically)
+2. **Running the MCP server** (which must be active when you use Claude)
+
+#### Important: Always Run the MCP Server First
+
+Before using Claude, make sure the MCP server is running in a terminal window:
+
+```bash
+# Keep this terminal window open while using Claude
+./start_all_mcp_servers.sh
+```
+
+Then, in a separate terminal window:
+
+```bash
+# This will use the registered and running MCP server
+claude "Who won the latest F1 race?"
+```
+
+#### Debugging MCP Issues
+
+If you're having issues with MCP, use the `--mcp-debug` flag:
+
+```bash
+claude --mcp-debug
+```
+
+This will show any connection errors with the MCP servers.
+
+### Troubleshooting MCP Integration
+
+If you're having issues with the MCP tools, check these common problems:
+
+#### 1. "Connection failed" or "MCP server tavily failed"
+
+This usually means the server isn't running. Remember the two-terminal workflow:
+- Terminal 1: Run and keep `./start_all_mcp_servers.sh` open (it will automatically stop any existing server instances)
+- Terminal 2: Run `claude` commands
+
+#### 2. Server not showing up in `/mcp` list
+
+Check that the server is properly registered:
+```bash
+claude mcp list
+```
+You should see "tavily" with an absolute path. If not, re-run the start script.
+
+#### 3. Debug Mode
+
+To see detailed error information:
+```bash
+claude --mcp-debug
+```
+This will show connection errors and other issues when you run a query.
+
+#### 4. Verify Server Health
+
+If you suspect the server isn't running correctly, check its health endpoint:
+```bash
+# In a new terminal
+curl http://localhost:5001/health
+```
+It should return `{"status": "healthy"}`.
+
+#### 5. Port Already in Use
+
+If you get errors about the port being in use, the scripts will now automatically:
+1. Detect any processes using the required ports
+2. Stop them gracefully before starting the new server
+3. Verify the port is free before continuing
+
+This makes it easier to restart the server without manual intervention.
+
+#### 6. Test Query
+
+To verify everything is working, ask a question that requires web search:
+```
+What is the current weather in New York City? Use the search tool to find real-time information.
+```
+
+#### 7. API Key Issues
+
+If the server gives API key errors, check your .env file:
+```bash
+cat .env | grep TAVILY
+```
+Make sure the API key is valid and not expired.
 
 ## Available MCP Servers
 
