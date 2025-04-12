@@ -209,7 +209,7 @@ class MCPRequestHandler(BaseHTTPRequestHandler):
 class MCPServer:
     """Server class that handles Tavily MCP requests."""
     
-    def __init__(self, host: str = "localhost", port: int = 5000, api_key: Optional[str] = None):
+    def __init__(self, host: str = "localhost", port: int = 5001, api_key: Optional[str] = None):
         self.host = host
         self.port = port
         self.tavily_client = TavilyMCP(api_key=api_key)
@@ -234,7 +234,7 @@ def main() -> None:
     """Main entry point for the script."""
     parser = argparse.ArgumentParser(description="Tavily MCP Server")
     parser.add_argument("--host", default="localhost", help="Host to bind the server to")
-    parser.add_argument("--port", type=int, default=5000, help="Port to bind the server to")
+    parser.add_argument("--port", type=int, default=5001, help="Port to bind the server to")
     parser.add_argument("--api-key", help="Tavily API key (can also be set via TAVILY_API_KEY env var)")
     
     args = parser.parse_args()

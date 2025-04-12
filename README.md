@@ -79,9 +79,41 @@ Or with custom settings:
 
 ## Usage with Claude Code
 
+### Setting Up the Claude Config File
+
+To use MCP tools without specifying flags each time:
+
+1. **Create or edit the Claude config file**:
+
+```bash
+# Create the directory if it doesn't exist
+mkdir -p ~/.claude
+
+# Create or edit the config.json file
+nano ~/.claude/config.json
+```
+
+2. **Add the MCP tools configuration** to your config.json file:
+
+```json
+{
+  "mcp_tools": [
+    {
+      "url": "http://localhost:5001/mcp",
+      "name": "mcp__tavily_search"
+    }
+    // Add more MCP tools as needed
+  ]
+}
+```
+
+3. **Save the file** (press Ctrl+X, then Y in nano)
+
+The setup script will offer to do this for you automatically, but you can also edit it manually.
+
 ### Using with Default Config
 
-If you've set up the config.json file, you can use Claude Code without any extra flags:
+Once you've set up the config.json file, you can use Claude Code without any extra flags:
 
 ```bash
 claude-code "Who won the latest F1 race?"
@@ -89,10 +121,16 @@ claude-code "Who won the latest F1 race?"
 
 ### Using with Command Line Flag
 
-Or specify the MCP tool directly:
+Alternatively, specify the MCP tool directly (useful for temporary use or testing):
 
 ```bash
-claude-code --mcp-tool="http://localhost:5000/mcp" "Who won the latest F1 race?"
+claude-code --mcp-tool="http://localhost:5001/mcp" "Who won the latest F1 race?"
+```
+
+You can also use multiple MCP tools at once:
+
+```bash
+claude-code --mcp-tool="http://localhost:5001/mcp" --mcp-tool="http://localhost:5011/mcp" "Who won the latest F1 race?"
 ```
 
 ## Available MCP Servers

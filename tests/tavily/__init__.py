@@ -1,0 +1,3 @@
+"""
+Tavily MCP Server Tests
+"""

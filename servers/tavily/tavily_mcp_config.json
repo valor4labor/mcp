@@ -105,7 +105,7 @@
     "note": "These are approximate limits and may vary based on your Tavily API plan"
   },
   "localhost_setup": {
-    "default_port": 5000,
-    "setup_instructions": "1. Install Python and uv package manager\n2. Set TAVILY_API_KEY environment variable\n3. Run tavily_mcp.py script\n4. Test with 'curl http://localhost:5000/health'"
+    "default_port": 5001,
+    "setup_instructions": "1. Install Python and uv package manager\n2. Set TAVILY_API_KEY environment variable\n3. Run tavily_mcp.py script\n4. Test with 'curl http://localhost:5001/health'"
   }
 }
