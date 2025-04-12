@@ -44,7 +44,19 @@ load_env() {
         source "$ENV_FILE"
     else
         echo -e "${RED}Error: .env file not found at $ENV_FILE${NC}"
-        echo -e "Please create the .env file with your API keys."
+        
+        # If this is a global installation, provide more detailed help
+        if [ "$CONFIG_DIR" != "." ] && [ "$CONFIG_DIR" != "$SCRIPT_DIR" ]; then
+            echo -e "\nIf you're using a global installation, please:"
+            echo -e "1. Create a config directory: ${BOLD}mkdir -p $CONFIG_DIR${NC}"
+            echo -e "2. Create an .env file: ${BOLD}cp /path/to/original/repo/.env.template $CONFIG_DIR/.env${NC}"
+            echo -e "3. Edit the file with your API keys: ${BOLD}nano $CONFIG_DIR/.env${NC}"
+            echo -e "4. Copy the config file: ${BOLD}cp /path/to/original/repo/mcp_config.json $CONFIG_DIR/${NC}"
+        else
+            echo -e "Please create the .env file with your API keys:"
+            echo -e "${BOLD}cp .env.template .env && nano .env${NC}"
+        fi
+        
         exit 1
     fi
 }
@@ -586,6 +598,67 @@ run_diagnostics() {
     echo -e "Run ${BOLD}cat ${DIAGNOSTIC_FILE}${NC} to view the full report."
 }
 
+# Setup the configuration directory for global installation
+setup_config() {
+    local target_dir="$1"
+    
+    if [ -z "$target_dir" ]; then
+        target_dir="$HOME/.mcp-manager"
+    fi
+    
+    echo -e "${BOLD}Setting up configuration directory at: $target_dir${NC}"
+    
+    # Create the directory structure
+    mkdir -p "$target_dir/logs"
+    
+    # Copy the template .env file if it exists
+    if [ -f "$SCRIPT_DIR/.env.template" ]; then
+        cp "$SCRIPT_DIR/.env.template" "$target_dir/.env"
+        echo -e "${GREEN}Copied .env.template to $target_dir/.env${NC}"
+        echo -e "${YELLOW}Remember to edit this file with your actual API keys!${NC}"
+    else
+        echo -e "${YELLOW}Could not find .env.template, creating an empty .env file${NC}"
+        echo "# Add your API keys here" > "$target_dir/.env"
+        echo "SMITHERY_API_KEY=your_smithery_key_here" >> "$target_dir/.env"
+        echo "TAVILY_API_KEY=your_tavily_key_here" >> "$target_dir/.env"
+        echo "FIRECRAWL_API_KEY=your_firecrawl_key_here" >> "$target_dir/.env"
+        echo "OPENROUTER_API_KEY=your_openrouter_key_here" >> "$target_dir/.env"
+    fi
+    
+    # Copy the config file if it exists
+    if [ -f "$SCRIPT_DIR/mcp_config.json" ]; then
+        cp "$SCRIPT_DIR/mcp_config.json" "$target_dir/mcp_config.json"
+        echo -e "${GREEN}Copied mcp_config.json to $target_dir/mcp_config.json${NC}"
+    else
+        echo -e "${YELLOW}Could not find mcp_config.json, creating a basic configuration${NC}"
+        echo '{
+  "mcpServers": {
+    "tavily": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@smithery/cli@latest",
+        "run",
+        "@tavily-ai/tavily-mcp",
+        "--key",
+        "${SMITHERY_API_KEY}"
+      ],
+      "envVars": {
+        "TAVILY_API_KEY": "${TAVILY_API_KEY}"
+      },
+      "port": 3000,
+      "mcpName": "tavily-search"
+    }
+  }
+}' > "$target_dir/mcp_config.json"
+    fi
+    
+    echo -e "${GREEN}Configuration directory setup complete!${NC}"
+    echo -e "To use this configuration directory, run:"
+    echo -e "${BOLD}export MCP_CONFIG_DIR=$target_dir${NC}"
+    echo -e "You may want to add this to your .bashrc or .zshrc file."
+}
+
 # Print usage information
 print_usage() {
     echo -e "${BOLD}MCP Server Manager${NC}"
@@ -600,11 +673,13 @@ print_usage() {
     echo -e "  ${GREEN}status${NC}          Check status of all MCP servers"
     echo -e "  ${GREEN}logs${NC} [server]   View logs for all or a specific server"
     echo -e "  ${GREEN}diagnose${NC}        Run diagnostics and troubleshooting"
+    echo -e "  ${GREEN}setup${NC} [dir]     Set up configuration directory (for global installation)"
     echo -e "  ${GREEN}help${NC}            Show this help message"
     echo
     echo -e "${BOLD}Examples:${NC}"
     echo -e "  ./mcp_manager.sh start       # Start all servers"
     echo -e "  ./mcp_manager.sh logs tavily # View tavily server logs"
+    echo -e "  ./mcp_manager.sh setup       # Set up default config directory in ~/.mcp-manager"
 }
 
 # Setup trap for graceful shutdown
@@ -640,11 +715,9 @@ main() {
         command="help"
     fi
     
-    # Load environment variables
-    load_env
-    
-    # Check requirements first
-    if [ "$command" != "help" ]; then
+    # Load environment variables if not using setup or help
+    if [ "$command" != "setup" ] && [ "$command" != "help" ]; then
+        load_env
         check_requirements
     fi
     
@@ -668,6 +741,9 @@ main() {
             ;;
         diagnose)
             run_diagnostics
+            ;;
+        setup)
+            setup_config "$1"
             ;;
         help|--help|-h)
             print_usage

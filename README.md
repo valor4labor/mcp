@@ -44,23 +44,49 @@ chmod +x mcp_manager.sh
 # Install globally with npm
 npm install -g git+https://github.com/valor4labor/mcp.git
 
+# Run the setup command to create a configuration directory
+mcp-manager setup
+
+# Edit your .env file with your API keys
+nano ~/.mcp-manager/.env
+
 # Now you can run from anywhere
+export MCP_CONFIG_DIR=~/.mcp-manager
 mcp-manager start
+```
+
+For convenience, you might want to add this to your `.bashrc` or `.zshrc`:
+```bash
+export MCP_CONFIG_DIR=~/.mcp-manager
 ```
 
 ## Quick Start
 
+### Local Installation
 ```bash
-# 1. Add your API keys to the .env file (create it first if needed)
+# 1. Copy the template and add your API keys
+cp .env.template .env
 nano .env
 
 # 2. Start the MCP servers
-# For local installation:
 ./mcp_manager.sh start
-# OR for global installation:
-mcp-manager start
 
 # 3. In a new terminal, start Claude
+claude
+```
+
+### Global Installation
+```bash
+# 1. Make sure your configuration directory is set up
+# (See Global Installation section above)
+
+# 2. Set the configuration directory
+export MCP_CONFIG_DIR=~/.mcp-manager
+
+# 3. Start the MCP servers
+mcp-manager start
+
+# 4. In a new terminal, start Claude
 claude
 ```
 
@@ -126,15 +152,22 @@ mcp-manager diagnose
 
 ### Custom Configuration Directory
 
-For global installations, you can specify a custom configuration directory:
+For global installations, you must specify a configuration directory that contains your `.env` file and `mcp_config.json`:
 
 ```bash
 # Set environment variable for configuration directory
-export MCP_CONFIG_DIR=/path/to/your/config
+export MCP_CONFIG_DIR=~/.mcp-manager
 
 # Run commands
 mcp-manager start
 ```
+
+Your configuration directory should contain:
+- `.env` file with your API keys
+- `mcp_config.json` defining your MCP servers
+- A `logs` directory will be created automatically
+
+Without setting `MCP_CONFIG_DIR`, the script will look in the current directory for these files.
 
 ## Using MCP Tools in Claude
 
