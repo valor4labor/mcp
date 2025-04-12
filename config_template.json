@@ -4,6 +4,6 @@
       "url": "http://localhost:5001/mcp",
       "name": "mcp__tavily_search"
     }
-    // Add more MCP tools as needed
-  ]
+  ],
+  "__comment": "Add more MCP tools to the array above as needed"
 }

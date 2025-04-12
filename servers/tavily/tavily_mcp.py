@@ -183,7 +183,7 @@ class MCPRequestHandler(BaseHTTPRequestHandler):
                 logger.error(f"Error processing request: {e}")
                 self._send_response(500, {"error": str(e)})
         elif self.path == "/search":
-            # Legacy API endpoint
+            # Direct API endpoint (non-MCP format for direct integration)
             try:
                 content_length = int(self.headers.get("Content-Length", 0))
                 if content_length == 0:
