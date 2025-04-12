@@ -18,11 +18,56 @@ Run the script to test the MCP servers in an integrated way:
 ```
 
 This will:
-1. Start each MCP server
-2. Test the health endpoint
-3. Test the MCP configuration endpoint
-4. Test the MCP endpoint with a test query
-5. Shut down all servers
+1. Set up dependencies and virtual environments if needed
+2. Start each MCP server
+3. Test the health endpoint
+4. Test the MCP configuration endpoint
+5. Test the MCP endpoint with a test query
+6. Shut down all servers
+
+#### Setup for Testing
+
+For best results, prepare a testing environment:
+
+```bash
+# Create a virtual environment
+uv venv venv
+
+# Activate the environment
+source venv/bin/activate
+
+# Install test dependencies
+uv pip install tavily-python requests pytest
+```
+
+#### Troubleshooting
+
+If you encounter issues:
+
+1. **API Key Problems**:
+   ```
+   Error: Tavily API key not provided
+   ```
+   Make sure your `.env` file contains the required API keys:
+   ```
+   TAVILY_API_KEY=your_actual_key_here
+   ```
+
+2. **Port Already in Use**:
+   If you see an error about the port being in use, ensure no other MCP servers are running.
+   ```bash
+   # Check if the port is in use
+   lsof -i:5001
+   
+   # If needed, kill the process
+   kill <PID>
+   ```
+
+3. **Dependency Issues**:
+   The test script passes the API key directly to the server script, but you might need to install dependencies:
+   ```bash
+   uv pip install tavily-python requests
+   ```
 
 ### Python Unit Tests
 

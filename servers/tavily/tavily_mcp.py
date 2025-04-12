@@ -29,6 +29,22 @@ DEPENDENCIES = [
 
 def ensure_dependencies() -> None:
     """Use uv to install required dependencies if they aren't already installed."""
+    # First try to import directly - this works if dependencies are already installed
+    try:
+        # Try importing the dependencies
+        import requests
+        try:
+            from tavily import TavilyClient
+            logger.info("Dependencies are already installed")
+            return
+        except ImportError:
+            # Only tavily is missing
+            pass
+    except ImportError:
+        # Requests is missing
+        pass
+        
+    # Dependencies need to be installed
     try:
         # Check if uv is installed
         subprocess.run(["uv", "--version"], capture_output=True, check=True)
@@ -38,17 +54,30 @@ def ensure_dependencies() -> None:
     
     logger.info("Installing dependencies with uv...")
     try:
+        # Try to install directly (for testing)
+        try:
+            # Try system install first (useful for tests)
+            subprocess.run(
+                ["uv", "pip", "install", "--system"] + DEPENDENCIES,
+                check=True,
+            )
+            logger.info("Dependencies installed successfully in system Python")
+            return
+        except subprocess.SubprocessError:
+            # System install failed, try with venv
+            pass
+            
         # Create a virtual environment if it doesn't exist
         venv_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".venv")
         if not os.path.exists(venv_dir):
             subprocess.run(["uv", "venv", venv_dir], check=True)
         
-        # Install dependencies
+        # Install dependencies in the venv
         subprocess.run(
             ["uv", "pip", "install"] + DEPENDENCIES,
             check=True,
         )
-        logger.info("Dependencies installed successfully")
+        logger.info("Dependencies installed successfully in virtual environment")
     except subprocess.SubprocessError as e:
         logger.error(f"Failed to install dependencies: {e}")
         sys.exit(1)

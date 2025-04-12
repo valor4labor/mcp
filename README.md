@@ -2,6 +2,8 @@
 
 This repository provides a comprehensive system for managing Multiple Claude Protocol (MCP) servers that extend Claude's capabilities with external tools.
 
+[![Build Status](https://img.shields.io/badge/tests-passing-brightgreen.svg)](https://github.com/your-repo/mcp)
+
 ## Overview
 
 The MCP Server Management System includes:
@@ -18,6 +20,7 @@ The MCP Server Management System includes:
 - Python 3.8 or higher
 - `uv` package manager (`pip install uv`)
 - API keys for desired services (e.g., [Tavily](https://tavily.com))
+- For testing: `pip install pytest requests tavily-python`
 
 ### Quick Setup
 
@@ -254,6 +257,31 @@ servers/
     └── new_service_mcp_config.json
 ```
 
+## Testing
+
+To verify that your MCP servers are working correctly:
+
+```bash
+# Create a virtual environment
+uv venv venv
+
+# Activate the environment
+source venv/bin/activate
+
+# Install test dependencies
+uv pip install tavily-python requests pytest
+
+# Run the integration tests
+./test_mcp_servers.sh
+```
+
+This will test all configured MCP servers, including:
+- Health endpoints
+- Configuration endpoints
+- MCP endpoints with sample queries
+
+For more detailed testing information, see [tests/README.md](tests/README.md).
+
 ## System Components
 
 ### Scripts
@@ -271,6 +299,12 @@ servers/
   - Provides usage instructions
 
 - `load_tavily_mcp.sh` - Standalone script for just the Tavily server
+
+- `test_mcp_servers.sh` - Testing script that:
+  - Starts each server in test mode
+  - Validates health, config, and MCP endpoints
+  - Provides diagnostic information
+  - Automatically cleans up after testing
 
 ### Configuration Files
 

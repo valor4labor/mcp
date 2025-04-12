@@ -63,13 +63,23 @@ start_test_server() {
     return 1
   fi
   
-  # Start the server
-  "$script" --port "$port" &
+  # Prepare for server startup
+  echo -e "${YELLOW}Setting up for $name server...${NC}"
+  local server_dir=$(dirname "$script")
+  
+  # For testing purposes, let's use the system Python
+  # This avoids virtual environment issues in the test script
+  echo -e "${YELLOW}Note: Tests use system Python installation${NC}"
+  
+  # We'll let the script handle its own dependencies
+  
+  # Start the server with explicit API key
+  "$script" --port "$port" --api-key "${!api_key_name}" &
   local pid=$!
   echo "$name:$pid:$port" >> "$PID_FILE"
   
   # Give the server a moment to start
-  sleep 2
+  sleep 5  # Increased wait time to allow for startup
   
   # Verify server is running
   if ! curl -s "http://localhost:$port/health" > /dev/null; then
