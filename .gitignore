@@ -1,0 +1,50 @@
+# Environment and configuration
+.env
+*.local.json
+config.json
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+*.egg-info/
+.installed.cfg
+*.egg
+.pytest_cache/
+.coverage
+htmlcov/
+.venv/
+venv/
+
+# Server runtime files
+.mcp_pids
+*.pid
+*.log
+
+# OS specific files
+.DS_Store
+Thumbs.db
+.directory
+Desktop.ini
+
+# Editor directories and files
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.*.un~
